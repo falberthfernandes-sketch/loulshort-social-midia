@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minha Rede Social</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f0f2f5; color: #1c1e21; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { width: 100%; max-width: 600px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { margin-bottom: 15px; color: #1877f2; }
+        input, textarea { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 14px; }
+        textarea { resize: none; height: 80px; }
+        button { width: 100%; padding: 12px; background-color: #1877f2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #166fe5; }
+        .secondary-btn { background-color: #42b72a; margin-top: 5px; }
+        .secondary-btn:hover { background-color: #36a420; }
+        .logout-btn { background-color: #e4e6eb; color: #050505; width: auto; padding: 8px 12px; font-size: 14px; float: right; }
+        .logout-btn:hover { background-color: #d8dadf; }
+        .post { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); margin-bottom: 12px; }
+        .post-author { font-weight: bold; color: #050505; font-size: 14px; }
+        .post-date { color: #65676b; font-size: 12px; margin-bottom: 8px; }
+        .post-content { font-size: 15px; line-height: 1.4; word-break: break-word; }
+        .hidden { display: none !important; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="auth-screen" class="card">
+            <h2 id="auth-title">Fazer Login</h2>
+            <input type="email" id="auth-email" placeholder="E-mail">
+            <input type="password" id="auth-password" placeholder="Senha (mínimo 6 caracteres)">
+            <button id="btn-primary" onclick="handleAuth()">Entrar</button>
+            <button id="btn-toggle" class="secondary-btn" onclick="toggleAuthMode()">Criar nova conta</button>
+        </div>
+
+        <div id="feed-screen" class="hidden">
+            <div class="header">
+                <h3>Olá, <span id="user-display"></span>!</h3>
+                <button class="logout-btn" onclick="logout()">Sair</button>
+            </div>
+
+            <div class="card">
+                <h2>No que você está pensando?</h2>
+                <textarea id="post-text" placeholder="Escreva algo para seus amigos..."></textarea>
+                <button onclick="createPost()">Publicar</button>
+            </div>
+
+            <div id="posts-container">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURAÇÃO DO SUPABASE
+        // Substitua os textos abaixo pelos seus dados reais do Supabase!
+        const SUPABASE_URL = "https://aucumilwoqqmfvbspglm.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1Y3VtaWx3b3FxbWZ2YnNwZ2xtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NDIwMTAsImV4cCI6MjA5NzIxODAxMH0.OlMcnTc---CwEZu5sV3d4uh59nBzJhzBrz_aGSZno8k";
+
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let isLoginMode = true;
+        let currentUser = null;
+
+        // Verificar se usuário já está logado ao carregar a página
+        window.onload = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                setupFeed(session.user);
+            }
+            // Ouvir mudanças na autenticação
+            supabase.auth.onAuthStateChange((event, session) => {
+                if (session) {
+                    setupFeed(session.user);
+                } else {
+                    showAuthScreen();
+                }
+            });
+        };
+
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            document.getElementById('auth-title').innerText = isLoginMode ? "Fazer Login" : "Criar Conta";
+            document.getElementById('btn-primary').innerText = isLoginMode ? "Entrar" : "Cadastrar";
+            document.getElementById('btn-toggle').innerText = isLoginMode ? "Criar nova conta" : "Já tenho uma conta";
+        }
+
+        async function handleAuth() {
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+
+            if (!email || !password) return alert("Preencha todos os campos!");
+
+            if (isLoginMode) {
+                const { error } = await supabase.auth.signInWithPassword({ email, password });
+                if (error) alert("Erro no login: " + error.message);
+            } else {
+                const { error } = await supabase.auth.signUp({ email, password });
+                if (error) alert("Erro no cadastro: " + error.message);
+                else alert("Cadastro realizado! Se configurado, confirme o e-mail ou tente fazer login.");
+            }
+        }
+
+        async function logout() {
+            await supabase.auth.signOut();
+            showAuthScreen();
+        }
+
+        function showAuthScreen() {
+            currentUser = null;
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('feed-screen').classList.add('hidden');
+        }
+
+        function setupFeed(user) {
+            currentUser = user;
+            document.getElementById('user-display').innerText = user.email;
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('feed-screen').classList.remove('hidden');
+            loadPosts();
+        }
+
+        async function createPost() {
+            const textContent = document.getElementById('post-text').value;
+            if (!textContent.trim()) return alert("O post não pode estar vazio!");
+
+            const { error } = await supabase.into('posts').insert([
+                { 
+                    content: textContent, 
+                    user_id: currentUser.id,
+                    user_email: currentUser.email
+                }
+            ]);
+
+            if (error) {
+                alert("Erro ao postar: " + error.message);
+            } else {
+                document.getElementById('post-text').value = "";
+                loadPosts(); // Atualiza a lista
+            }
+        }
+
+        async function loadPosts() {
+            const { data, error } = await supabase
+                .from('posts')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Erro ao carregar posts:", error);
+                return;
+            }
+
+            const container = document.getElementById('posts-container');
+            container.innerHTML = "";
+
+            data.forEach(post => {
+                const date = new Date(post.created_at).toLocaleString('pt-BR');
+                const postElement = document.createElement('div');
+                postElement.className = 'post';
+                postElement.innerHTML = `
+                    <div class="post-author">${post.user_email}</div>
+                    <div class="post-date">${date}</div>
+                    <div class="post-content">${escaparHTML(post.content)}</div>
+                `;
+                container.appendChild(postElement);
+            });
+        }
+
+        function escaparHTML(text) {
+            const div = document.createElement('div');
+            div.innerText = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
