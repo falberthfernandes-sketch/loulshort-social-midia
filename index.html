@@ -6,19 +6,18 @@
     <title>Minha Rede Social</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
         body { background-color: #f0f2f5; color: #1c1e21; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .container { width: 100%; max-width: 600px; }
+        .container { width: 100%; max-width: 600px; margin-top: 20px; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h2 { margin-bottom: 15px; color: #1877f2; }
         input, textarea { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccd0d5; border-radius: 6px; font-size: 14px; }
         textarea { resize: none; height: 80px; }
-        button { width: 100%; padding: 12px; background-color: #1877f2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        button { width: 100%; padding: 12px; background-color: #1877f2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
         button:hover { background-color: #166fe5; }
-        .secondary-btn { background-color: #42b72a; margin-top: 5px; }
+        .secondary-btn { background-color: #42b72a; }
         .secondary-btn:hover { background-color: #36a420; }
         .logout-btn { background-color: #e4e6eb; color: #050505; width: auto; padding: 8px 12px; font-size: 14px; float: right; }
-        .logout-btn:hover { background-color: #d8dadf; }
         .post { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); margin-bottom: 12px; }
         .post-author { font-weight: bold; color: #050505; font-size: 14px; }
         .post-date { color: #65676b; font-size: 12px; margin-bottom: 8px; }
@@ -32,8 +31,8 @@
     <div class="container">
         <div id="auth-screen" class="card">
             <h2 id="auth-title">Fazer Login</h2>
-            <input type="email" id="auth-email" placeholder="E-mail">
-            <input type="password" id="auth-password" placeholder="Senha (mínimo 6 caracteres)">
+            <input type="email" id="auth-email" placeholder="Seu e-mail">
+            <input type="password" id="auth-password" placeholder="Sua senha (mínimo 6 caracteres)">
             <button id="btn-primary" onclick="handleAuth()">Entrar</button>
             <button id="btn-toggle" class="secondary-btn" onclick="toggleAuthMode()">Criar nova conta</button>
         </div>
@@ -46,7 +45,7 @@
 
             <div class="card">
                 <h2>No que você está pensando?</h2>
-                <textarea id="post-text" placeholder="Escreva algo para seus amigos..."></textarea>
+                <textarea id="post-text" placeholder="Escreva algo para o feed..."></textarea>
                 <button onclick="createPost()">Publicar</button>
             </div>
 
@@ -57,28 +56,37 @@
 
     <script>
         // CONFIGURAÇÃO DO SUPABASE
-        // Substitua os textos abaixo pelos seus dados reais do Supabase!
         const SUPABASE_URL = "https://aucumilwoqqmfvbspglm.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1Y3VtaWx3b3FxbWZ2YnNwZ2xtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NDIwMTAsImV4cCI6MjA5NzIxODAxMH0.OlMcnTc---CwEZu5sV3d4uh59nBzJhzBrz_aGSZno8k";
 
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+        let supabase;
         let isLoginMode = true;
         let currentUser = null;
 
-        // Verificar se usuário já está logado ao carregar a página
+        // Inicialização com checagem de erros
+        try {
+            if (typeof supabase === 'undefined') {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        } catch (e) {
+            alert("Erro crítico ao carregar o banco de dados. Verifique as chaves.");
+        }
+
         window.onload = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
+            if (!supabase) return;
+            
+            // Verifica sessão atual
+            const { data: { session }, error } = await supabase.auth.getSession();
+            if (error) {
+                console.error(error);
+            } else if (session) {
                 setupFeed(session.user);
             }
-            // Ouvir mudanças na autenticação
+
+            // Escuta logins/logouts
             supabase.auth.onAuthStateChange((event, session) => {
-                if (session) {
-                    setupFeed(session.user);
-                } else {
-                    showAuthScreen();
-                }
+                if (session) setupFeed(session.user);
+                else showAuthScreen();
             });
         };
 
@@ -90,18 +98,21 @@
         }
 
         async function handleAuth() {
-            const email = document.getElementById('auth-email').value;
-            const password = document.getElementById('auth-password').value;
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value.trim();
 
-            if (!email || !password) return alert("Preencha todos os campos!");
+            if (!email || !password) {
+                alert("Por favor, preencha o e-mail e a senha.");
+                return;
+            }
 
             if (isLoginMode) {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
-                if (error) alert("Erro no login: " + error.message);
+                if (error) alert("Erro no Login: " + error.message);
             } else {
                 const { error } = await supabase.auth.signUp({ email, password });
-                if (error) alert("Erro no cadastro: " + error.message);
-                else alert("Cadastro realizado! Se configurado, confirme o e-mail ou tente fazer login.");
+                if (error) alert("Erro no Cadastro: " + error.message);
+                else alert("Conta criada! Verifique seu e-mail ou tente logar.");
             }
         }
 
@@ -125,10 +136,10 @@
         }
 
         async function createPost() {
-            const textContent = document.getElementById('post-text').value;
-            if (!textContent.trim()) return alert("O post não pode estar vazio!");
+            const textContent = document.getElementById('post-text').value.trim();
+            if (!textContent) return alert("Escreva alguma coisa antes de publicar!");
 
-            const { error } = await supabase.into('posts').insert([
+            const { error } = await supabase.from('posts').insert([
                 { 
                     content: textContent, 
                     user_id: currentUser.id,
@@ -137,10 +148,10 @@
             ]);
 
             if (error) {
-                alert("Erro ao postar: " + error.message);
+                alert("Erro ao postar. Sua tabela 'posts' foi criada no Supabase?\nErro: " + error.message);
             } else {
                 document.getElementById('post-text').value = "";
-                loadPosts(); // Atualiza a lista
+                loadPosts();
             }
         }
 
@@ -160,21 +171,21 @@
 
             data.forEach(post => {
                 const date = new Date(post.created_at).toLocaleString('pt-BR');
-                const postElement = document.createElement('div');
-                postElement.className = 'post';
-                postElement.innerHTML = `
+                const div = document.createElement('div');
+                div.className = 'post';
+                
+                // Proteção contra scripts maliciosos nos posts
+                const safeContent = document.createElement('div');
+                safeContent.className = 'post-content';
+                safeContent.innerText = post.content;
+
+                div.innerHTML = `
                     <div class="post-author">${post.user_email}</div>
                     <div class="post-date">${date}</div>
-                    <div class="post-content">${escaparHTML(post.content)}</div>
                 `;
-                container.appendChild(postElement);
+                div.appendChild(safeContent);
+                container.appendChild(div);
             });
-        }
-
-        function escaparHTML(text) {
-            const div = document.createElement('div');
-            div.innerText = text;
-            return div.innerHTML;
         }
     </script>
 </body>
